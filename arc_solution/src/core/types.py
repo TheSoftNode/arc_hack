@@ -79,6 +79,20 @@ class Transformation:
 
 
 @dataclass
+class TransformationProgram:
+    """Represents a sequence of operations that transform an input grid"""
+    operations: List[Dict[str, Any]]
+    complexity: int = 0
+    metadata: Optional[Dict[str, Any]] = None
+    
+    def __post_init__(self):
+        if self.metadata is None:
+            self.metadata = {}
+        if self.complexity == 0:
+            self.complexity = len(self.operations)
+
+
+@dataclass
 class Hypothesis:
     """A hypothesis about how to solve a task"""
     transformations: List[Transformation]
@@ -86,6 +100,15 @@ class Hypothesis:
     description: str
     generated_by: str  # Which component generated this hypothesis
     reasoning: Optional[str] = None  # LLM reasoning if applicable
+    program: Optional[TransformationProgram] = None  # Associated program
+    explanation: Optional[str] = None  # Human-readable explanation
+    metadata: Optional[Dict[str, Any]] = None  # Additional metadata
+    
+    def __post_init__(self):
+        if self.metadata is None:
+            self.metadata = {}
+        if self.explanation is None and self.description:
+            self.explanation = self.description
     
     def apply_to_grid(self, grid: Grid) -> Grid:
         """Apply all transformations in sequence"""
