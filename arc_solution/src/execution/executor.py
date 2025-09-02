@@ -89,7 +89,7 @@ class ExecutionEngine:
                 # Execute single operation
                 result = self._execute_operation(operation, current_grid)
                 
-                if not result.success:
+                if not result.success or result.output is None:
                     return ExecutionResult(
                         success=False,
                         output=None,
