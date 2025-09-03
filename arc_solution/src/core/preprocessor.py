@@ -6,10 +6,19 @@ for downstream reasoning components.
 """
 
 import numpy as np
-import cv2
+try:
+    import cv2
+except ImportError:
+    cv2 = None
 from typing import Dict, Any, List, Tuple
-import networkx as nx
-from scipy import ndimage
+try:
+    import networkx as nx
+except ImportError:
+    nx = None
+try:
+    from scipy import ndimage
+except ImportError:
+    ndimage = None
 
 from .types import Grid, SceneRepresentation, Object, SpatialRelation, Position, BoundingBox
 
@@ -82,7 +91,15 @@ class MultiModalPreprocessor:
             color_mask = (grid_array == color).astype(np.uint8)
             
             # Find connected components
-            num_labels, labels = cv2.connectedComponents(color_mask)
+            if cv2 is not None:
+                num_labels, labels = cv2.connectedComponents(color_mask)
+            elif ndimage is not None:
+                # Fallback: use scipy.ndimage.label
+                labels, num_labels = ndimage.label(color_mask)
+            else:
+                # Simple fallback: treat each non-zero pixel as separate object
+                num_labels = 1
+                labels = color_mask
             
             for label in range(1, num_labels):  # Skip background label 0
                 # Get positions of this component
@@ -214,8 +231,11 @@ class MultiModalPreprocessor:
                 outer_bbox[2] >= inner_bbox[2] and  # max_row
                 outer_bbox[3] >= inner_bbox[3])     # max_col
     
-    def _build_scene_graph(self, objects: List[Object], relations: List[SpatialRelation]) -> nx.Graph:
+    def _build_scene_graph(self, objects: List[Object], relations: List[SpatialRelation]):
         """Build a NetworkX graph representing the scene structure"""
+        if nx is None:
+            return None  # Return None if networkx is not available
+            
         G = nx.Graph()
         
         # Add nodes for each object

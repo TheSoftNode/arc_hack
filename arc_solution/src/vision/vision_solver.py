@@ -15,7 +15,7 @@ except ImportError:
     cv2 = None
 
 try:
-    from skimage import measure, morphology, segmentation
+    from skimage import measure
     from skimage.feature import match_template
 except ImportError:
     measure = morphology = segmentation = match_template = None

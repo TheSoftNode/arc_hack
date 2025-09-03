@@ -59,14 +59,18 @@ class LLMReasoner:
     
     def _initialize_client(self):
         """Initialize the appropriate LLM client"""
-        if self.provider == "openai" and openai:
-            self.client = openai.OpenAI()
-        elif self.provider == "anthropic" and anthropic:
-            self.client = anthropic.Anthropic()
-        elif self.provider == "groq" and groq:
-            self.client = groq.Groq()
-        else:
-            print(f"Warning: LLM provider {self.provider} not available or not installed")
+        try:
+            if self.provider == "openai" and openai:
+                self.client = openai.OpenAI()
+            elif self.provider == "anthropic" and anthropic:
+                self.client = anthropic.Anthropic()
+            elif self.provider == "groq" and groq:
+                self.client = groq.Groq()
+            else:
+                print(f"Warning: LLM provider {self.provider} not available or not installed")
+        except Exception as e:
+            print(f"Warning: Could not initialize LLM client for {self.provider}: {e}")
+            self.client = None
     
     def generate_hypotheses(self, task: Task, max_hypotheses: int = 5) -> List[Hypothesis]:
         """
@@ -174,6 +178,9 @@ class LLMReasoner:
     
     def _query_openai(self, context: str) -> Optional[LLMResponse]:
         """Query OpenAI API"""
+        if not self.client:
+            return None
+            
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -194,6 +201,9 @@ class LLMReasoner:
     
     def _query_anthropic(self, context: str) -> Optional[LLMResponse]:
         """Query Anthropic API"""
+        if not self.client:
+            return None
+            
         try:
             response = self.client.messages.create(
                 model=self.model if "claude" in self.model else "claude-3-sonnet-20240229",
@@ -213,6 +223,9 @@ class LLMReasoner:
     
     def _query_groq(self, context: str) -> Optional[LLMResponse]:
         """Query Groq API"""
+        if not self.client:
+            return None
+            
         try:
             response = self.client.chat.completions.create(
                 model=self.model if "mixtral" in self.model or "llama" in self.model else "mixtral-8x7b-32768",
@@ -370,8 +383,9 @@ class LLMReasoner:
             
             if refined_hypotheses:
                 refined = refined_hypotheses[0]
-                refined.metadata['refinement_of'] = hypothesis.description
-                refined.metadata['original_confidence'] = hypothesis.confidence
+                if refined and refined.metadata:
+                    refined.metadata['refinement_of'] = hypothesis.description
+                    refined.metadata['original_confidence'] = hypothesis.confidence
                 return refined
             
             return None
