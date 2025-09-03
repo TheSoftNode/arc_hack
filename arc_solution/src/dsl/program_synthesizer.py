@@ -113,8 +113,11 @@ class ProgramSynthesizer:
             )
             
             hypothesis = Hypothesis(
-                program=program,
+                transformations=[],  # Will be populated by execution engine
                 confidence=candidate.fitness,
+                description=self._generate_explanation(candidate),
+                generated_by="program_synthesizer",
+                program=program,
                 explanation=self._generate_explanation(candidate),
                 metadata={
                     'execution_time': candidate.execution_time,
