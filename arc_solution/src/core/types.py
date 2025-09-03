@@ -5,7 +5,7 @@ This module defines the fundamental data structures used throughout
 the multi-agent neuro-symbolic reasoning system.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Tuple, Union
 from enum import Enum
 import numpy as np
@@ -163,6 +163,29 @@ class TaskSolution:
     confidence_scores: List[float]
     execution_time: float
     metadata: Dict[str, Any]
+
+
+@dataclass
+class Solution:
+    """
+    Complete solution for an ARC task including predictions and metadata.
+    """
+    task_id: str
+    predictions: List['Prediction']
+    hypotheses: List[Hypothesis]
+    execution_time: float
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class Prediction:
+    """
+    A single prediction output for a test input.
+    """
+    grid: Grid
+    confidence: float
+    method: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

@@ -6,6 +6,7 @@ for ARC task solving using a Domain Specific Language (DSL).
 """
 
 import logging
+import numpy as np
 from typing import List, Dict, Any, Optional
 import time
 
@@ -36,7 +37,7 @@ class SymbolicSolver:
         
         # Initialize DSL and program synthesizer
         self.dsl = DSLPrimitives()
-        self.synthesizer = ProgramSynthesizer(self.dsl, config)
+        self.synthesizer = ProgramSynthesizer(self.dsl)
         
         # Statistics tracking
         self.stats = {
@@ -99,12 +100,19 @@ class SymbolicSolver:
         """Extract training input-output pairs from scene representations"""
         training_pairs = []
         
-        for scene in scenes:
-            if 'input' in scene and 'output' in scene:
+        # Scenes is a list of SceneRepresentation objects from preprocessing
+        # We need to pair them up as input-output pairs
+        
+        # For now, assume scenes come in pairs (input, output, input, output, ...)
+        for i in range(0, len(scenes), 2):
+            if i + 1 < len(scenes):
+                input_scene = scenes[i]
+                output_scene = scenes[i + 1]
+                
                 training_pairs.append({
-                    'input_scene': scene['input'],
-                    'output_scene': scene['output'],
-                    'pair_id': scene.get('pair_id', len(training_pairs))
+                    'input_scene': input_scene,
+                    'output_scene': output_scene,
+                    'pair_id': len(training_pairs)
                 })
         
         return training_pairs
@@ -169,8 +177,12 @@ class SymbolicSolver:
     def _analyze_color_changes(self, input_scene: SceneRepresentation,
                               output_scene: SceneRepresentation) -> Optional[Dict[str, Any]]:
         """Analyze color transformation patterns"""
-        input_colors = set(input_scene.features.get('object_colors', []))
-        output_colors = set(output_scene.features.get('object_colors', []))
+        # Handle case where features might be None
+        input_features = input_scene.features or {}
+        output_features = output_scene.features or {}
+        
+        input_colors = set(input_features.get('object_colors', []))
+        output_colors = set(output_features.get('object_colors', []))
         
         # Check for color mapping
         if input_colors != output_colors:
@@ -194,7 +206,6 @@ class SymbolicSolver:
             
             # Test rotations
             for rotation in [90, 180, 270]:
-                import numpy as np
                 rotated = np.rot90(input_grid, k=rotation//90)
                 if np.array_equal(rotated, output_grid):
                     return {
