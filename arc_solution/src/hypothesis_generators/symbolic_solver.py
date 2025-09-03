@@ -272,14 +272,14 @@ class SymbolicSolver:
         if pattern_type == 'rotation':
             angle = pattern.get('angle', 90)
             programs.append({
-                'operations': [{'name': 'rotate', 'angle': angle}],
+                'operations': [{'operation': 'rotate', 'angle': angle}],
                 'description': f"Rotate grid by {angle} degrees"
             })
             
         elif pattern_type == 'reflection':
             axis = pattern.get('axis', 'vertical')
             programs.append({
-                'operations': [{'name': 'reflect', 'axis': axis}],
+                'operations': [{'operation': 'reflect', 'axis': axis}],
                 'description': f"Reflect grid along {axis} axis"
             })
             
@@ -288,24 +288,86 @@ class SymbolicSolver:
             input_colors = pattern.get('input_colors', set())
             output_colors = pattern.get('output_colors', set())
             
-            programs.append({
-                'operations': [{'name': 'recolor', 'color_map': dict(zip(input_colors, output_colors))}],
-                'description': "Apply color mapping transformation"
-            })
+            if input_colors and output_colors:
+                color_map = dict(zip(list(input_colors), list(output_colors)))
+                programs.append({
+                    'operations': [{'operation': 'recolor', 'color_map': color_map}],
+                    'description': "Apply color mapping transformation"
+                })
             
         elif pattern_type == 'size_change':
             input_shape = pattern.get('input_shape')
             output_shape = pattern.get('output_shape')
             
             if input_shape and output_shape:
+                # Check if it's a tiling pattern (output is multiple of input)
+                if (output_shape[0] % input_shape[0] == 0 and 
+                    output_shape[1] % input_shape[1] == 0):
+                    
+                    tile_factor_h = output_shape[0] // input_shape[0]
+                    tile_factor_w = output_shape[1] // input_shape[1]
+                    
+                    # Generate tiling/pattern completion program
+                    programs.append({
+                        'operations': [
+                            {
+                                'operation': 'tile_pattern',
+                                'tile_factor_h': tile_factor_h,
+                                'tile_factor_w': tile_factor_w,
+                                'pattern_type': 'simple_tile'
+                            }
+                        ],
+                        'description': f"Tile {input_shape} pattern into {output_shape} grid"
+                    })
+                    
+                    # Also try alternating tile pattern (common in ARC)
+                    programs.append({
+                        'operations': [
+                            {
+                                'operation': 'tile_pattern',
+                                'tile_factor_h': tile_factor_h,
+                                'tile_factor_w': tile_factor_w,
+                                'pattern_type': 'alternating_tile'
+                            }
+                        ],
+                        'description': f"Create alternating tile pattern from {input_shape} to {output_shape}"
+                    })
+                    
+                    # Try checkerboard flip pattern (very common in ARC)
+                    programs.append({
+                        'operations': [
+                            {
+                                'operation': 'tile_pattern',
+                                'tile_factor_h': tile_factor_h,
+                                'tile_factor_w': tile_factor_w,
+                                'pattern_type': 'checkerboard_flip'
+                            }
+                        ],
+                        'description': f"Create checkerboard flip pattern from {input_shape} to {output_shape}"
+                    })
+                    
+                    # Try row alternating flip pattern (another common ARC pattern)
+                    programs.append({
+                        'operations': [
+                            {
+                                'operation': 'tile_pattern',
+                                'tile_factor_h': tile_factor_h,
+                                'tile_factor_w': tile_factor_w,
+                                'pattern_type': 'row_alternating_flip'
+                            }
+                        ],
+                        'description': f"Create row alternating flip pattern from {input_shape} to {output_shape}"
+                    })
+                
+                # Fallback: simple resize
                 programs.append({
-                    'operations': [{'name': 'resize', 'target_shape': output_shape}],
+                    'operations': [{'operation': 'resize', 'target_shape': output_shape}],
                     'description': f"Resize grid from {input_shape} to {output_shape}"
                 })
         
         # Add fallback "identity" program
         programs.append({
-            'operations': [{'name': 'identity'}],
+            'operations': [{'operation': 'identity'}],
             'description': "Return input unchanged"
         })
         
@@ -318,13 +380,21 @@ class SymbolicSolver:
             transformations = []
             for op in program.get('operations', []):
                 transform = Transformation(
-                    rule_type=op.get('name', 'unknown'),
+                    rule_type=op.get('operation', 'unknown'),
                     parameters=op,
                     confidence=0.7,  # Base confidence for symbolic solutions
-                    description=f"Apply {op.get('name', 'unknown')} operation",
+                    description=f"Apply {op.get('operation', 'unknown')} operation",
                     code=None  # Will be generated by execution engine
                 )
                 transformations.append(transform)
+            
+            # Create transformation program
+            from ..core.types import TransformationProgram
+            transformation_program = TransformationProgram(
+                operations=program.get('operations', []),
+                complexity=len(program.get('operations', [])),
+                metadata={'pattern_type': pattern.get('type', 'unknown')}
+            )
             
             # Create hypothesis
             hypothesis = Hypothesis(
@@ -332,7 +402,8 @@ class SymbolicSolver:
                 confidence=0.7,  # Base confidence
                 description=program.get('description', 'Symbolic transformation'),
                 generated_by='symbolic_solver',
-                reasoning=f"Pattern detected: {pattern.get('type', 'unknown')}"
+                reasoning=f"Pattern detected: {pattern.get('type', 'unknown')}",
+                program=transformation_program
             )
             
             return hypothesis

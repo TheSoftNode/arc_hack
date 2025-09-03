@@ -60,6 +60,7 @@ class DSLPrimitives:
             # Pattern operations
             'complete_pattern': self.complete_pattern,
             'extend_pattern': self.extend_pattern,
+            'tile_pattern': self.tile_pattern,
             
             # Utility operations
             'identity': self.identity,
@@ -318,6 +319,101 @@ class DSLPrimitives:
             result = np.vstack([grid_array, extension])
         else:
             return grid  # Unsupported direction
+        
+        return result.tolist()
+    
+    def tile_pattern(self, grid: Grid, 
+                     tile_factor_h: int = 3, 
+                     tile_factor_w: int = 3,
+                     pattern_type: str = 'simple_tile') -> Grid:
+        """
+        Create tiled patterns from input grid.
+        
+        Args:
+            grid: Input grid to tile
+            tile_factor_h: How many times to tile vertically  
+            tile_factor_w: How many times to tile horizontally
+            pattern_type: Type of tiling ('simple_tile', 'alternating_tile', 'checkerboard_flip')
+        """
+        grid_array = np.array(grid)
+        h, w = grid_array.shape
+        
+        if pattern_type == 'simple_tile':
+            # Simple repetition of the pattern
+            result = np.tile(grid_array, (tile_factor_h, tile_factor_w))
+            
+        elif pattern_type == 'alternating_tile':
+            # Alternating pattern (flip every other tile)
+            result = np.zeros((h * tile_factor_h, w * tile_factor_w), dtype=grid_array.dtype)
+            
+            for i in range(tile_factor_h):
+                for j in range(tile_factor_w):
+                    start_row = i * h
+                    end_row = (i + 1) * h
+                    start_col = j * w
+                    end_col = (j + 1) * w
+                    
+                    # Alternate pattern: flip every other tile
+                    if (i + j) % 2 == 0:
+                        # Original pattern
+                        result[start_row:end_row, start_col:end_col] = grid_array
+                    else:
+                        # Flipped pattern (horizontal flip for alternating effect)
+                        result[start_row:end_row, start_col:end_col] = np.fliplr(grid_array)
+        
+        elif pattern_type == 'checkerboard_flip':
+            # Checkerboard pattern with row/column flips - common in ARC
+            result = np.zeros((h * tile_factor_h, w * tile_factor_w), dtype=grid_array.dtype)
+            
+            # For each output position, determine which "tile" we're in
+            for out_row in range(h * tile_factor_h):
+                for out_col in range(w * tile_factor_w):
+                    # Which tile position (in terms of original grid)
+                    tile_row = out_row // h
+                    tile_col = out_col // w
+                    
+                    # Position within the original grid
+                    in_row = out_row % h
+                    in_col = out_col % w
+                    
+                    # Apply pattern based on tile position
+                    if tile_row % 2 == 0 and tile_col % 2 == 0:
+                        # Top-left style tiles: original
+                        result[out_row, out_col] = grid_array[in_row, in_col]
+                    elif tile_row % 2 == 0 and tile_col % 2 == 1:
+                        # Top-right style tiles: horizontally flipped
+                        result[out_row, out_col] = grid_array[in_row, w - 1 - in_col]
+                    elif tile_row % 2 == 1 and tile_col % 2 == 0:
+                        # Bottom-left style tiles: vertically flipped  
+                        result[out_row, out_col] = grid_array[h - 1 - in_row, in_col]
+                    else:
+                        # Bottom-right style tiles: both flipped
+                        result[out_row, out_col] = grid_array[h - 1 - in_row, w - 1 - in_col]
+        
+        elif pattern_type == 'row_alternating_flip':
+            # Row-wise alternating pattern: every other row is horizontally flipped then tiled
+            result = np.zeros((h * tile_factor_h, w * tile_factor_w), dtype=grid_array.dtype)
+            
+            for out_row in range(h * tile_factor_h):
+                # Which row in the original grid
+                in_row = out_row % h
+                # Which "block" of rows are we in?
+                row_block = out_row // h
+                
+                for out_col in range(w * tile_factor_w):
+                    in_col = out_col % w
+                    
+                    # Alternate between normal and flipped every other row block
+                    if row_block % 2 == 0:
+                        # Normal row block
+                        result[out_row, out_col] = grid_array[in_row, in_col]
+                    else:
+                        # Flipped row block (horizontally flip the input)
+                        result[out_row, out_col] = grid_array[in_row, w - 1 - in_col]
+        
+        else:
+            # Fallback: simple tile
+            result = np.tile(grid_array, (tile_factor_h, tile_factor_w))
         
         return result.tolist()
     

@@ -9,7 +9,7 @@ import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 
-from ..core.types import Grid, Task, Hypothesis
+from ..core.types import Grid, Task, Hypothesis, Transformation
 from ..execution.executor import ExecutionEngine, ExecutionResult
 
 
@@ -126,32 +126,89 @@ class HypothesisVerifier:
     
     def _compute_accuracy(self, hypothesis: Hypothesis, task: Task) -> Dict[str, Any]:
         """Compute accuracy of hypothesis on training examples"""
-        if not hypothesis.program or not task.train_pairs:
+        # Check if hypothesis has a program or transformations to execute
+        if not hypothesis.transformations and not getattr(hypothesis, 'program', None):
             return {
                 'accuracy': 0.0,
                 'execution_success_rate': 0.0,
                 'matches': 0,
                 'total': len(task.train_pairs),
-                'execution_failures': 0
+                'execution_failures': len(task.train_pairs),
+                'error': 'No transformations or program to execute'
             }
         
         matches = 0
         execution_failures = 0
         total = len(task.train_pairs)
+        execution_details = []
         
-        for pair in task.train_pairs:
+        for i, pair in enumerate(task.train_pairs):
             input_grid = pair['input']
             expected_output = pair['output']
             
-            # Execute hypothesis
-            execution_result = self.executor.execute_program(hypothesis.program, input_grid)
-            
-            if execution_result.success and execution_result.output:
-                # Check if output matches expected
-                if self._grids_equal(execution_result.output, expected_output):
-                    matches += 1
-            else:
+            try:
+                # Try to execute using program if available
+                if hasattr(hypothesis, 'program') and hypothesis.program:
+                    execution_result = self.executor.execute_program(hypothesis.program, input_grid)
+                    
+                    if execution_result.success and execution_result.output:
+                        if self._grids_equal(execution_result.output, expected_output):
+                            matches += 1
+                        execution_details.append({
+                            'pair_index': i,
+                            'success': True,
+                            'match': self._grids_equal(execution_result.output, expected_output),
+                            'execution_time': execution_result.execution_time
+                        })
+                    else:
+                        execution_failures += 1
+                        execution_details.append({
+                            'pair_index': i,
+                            'success': False,
+                            'error': execution_result.error,
+                            'execution_time': execution_result.execution_time
+                        })
+                
+                # Fallback: try to apply transformations directly (simplified execution)
+                elif hypothesis.transformations:
+                    try:
+                        current_grid = input_grid
+                        for transformation in hypothesis.transformations:
+                            # Simple execution for basic transformations
+                            current_grid = self._apply_simple_transformation(transformation, current_grid)
+                        
+                        if self._grids_equal(current_grid, expected_output):
+                            matches += 1
+                        
+                        execution_details.append({
+                            'pair_index': i,
+                            'success': True,
+                            'match': self._grids_equal(current_grid, expected_output),
+                            'method': 'direct_transformation'
+                        })
+                    except Exception as e:
+                        execution_failures += 1
+                        execution_details.append({
+                            'pair_index': i,
+                            'success': False,
+                            'error': str(e),
+                            'method': 'direct_transformation'
+                        })
+                else:
+                    execution_failures += 1
+                    execution_details.append({
+                        'pair_index': i,
+                        'success': False,
+                        'error': 'No executable content in hypothesis'
+                    })
+                    
+            except Exception as e:
                 execution_failures += 1
+                execution_details.append({
+                    'pair_index': i,
+                    'success': False,
+                    'error': f'Verification exception: {str(e)}'
+                })
         
         accuracy = matches / total if total > 0 else 0.0
         execution_success_rate = (total - execution_failures) / total if total > 0 else 0.0
@@ -161,7 +218,8 @@ class HypothesisVerifier:
             'execution_success_rate': execution_success_rate,
             'matches': matches,
             'total': total,
-            'execution_failures': execution_failures
+            'execution_failures': execution_failures,
+            'execution_details': execution_details
         }
     
     def _compute_consistency(self, hypothesis: Hypothesis, task: Task) -> float:
@@ -191,7 +249,7 @@ class HypothesisVerifier:
         
         # Normalize time variance (lower is better)
         max_time = max(execution_times) if execution_times else 1.0
-        normalized_time_variance = min(time_variance / max_time, 1.0) if max_time > 0 else 0.0
+        normalized_time_variance = min(float(time_variance) / max_time, 1.0) if max_time > 0 else 0.0
         
         # Consistency is high when success rate is high and time variance is low
         consistency = success_rate * (1.0 - normalized_time_variance)
@@ -261,6 +319,34 @@ class HypothesisVerifier:
         generalization = base_generalization + operation_bonus - specificity_penalty
         
         return max(0.0, min(1.0, generalization))
+    
+    def _apply_simple_transformation(self, transformation: 'Transformation', grid: Grid) -> Grid:
+        """Apply a simple transformation directly (fallback execution)"""
+        rule_type = transformation.rule_type
+        parameters = transformation.parameters
+        
+        # Use DSL primitives for basic transformations
+        if rule_type == 'rotate':
+            angle = parameters.get('angle', 90)
+            return self.executor.primitives.rotate(grid, angle)
+        elif rule_type == 'reflect':
+            axis = parameters.get('axis', 'vertical')
+            return self.executor.primitives.reflect(grid, axis)
+        elif rule_type == 'recolor':
+            color_map = parameters.get('color_map', {})
+            return self.executor.primitives.recolor(grid, color_map)
+        elif rule_type == 'translate':
+            dx = parameters.get('dx', 0)
+            dy = parameters.get('dy', 0)
+            return self.executor.primitives.translate(grid, dx, dy)
+        elif rule_type == 'scale':
+            factor = parameters.get('factor', 1.0)
+            return self.executor.primitives.scale(grid, factor)
+        elif rule_type == 'identity':
+            return self.executor.primitives.identity(grid)
+        else:
+            # Unknown transformation - return original grid
+            return grid
     
     def _grids_equal(self, grid1: Grid, grid2: Grid) -> bool:
         """Check if two grids are exactly equal"""
